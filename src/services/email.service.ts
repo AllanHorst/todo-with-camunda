@@ -7,7 +7,7 @@ dotenv.config();
 export class EmailService {
   constructor(/* Add @inject to inject parameters */) {}
 
-  send = async (guests: string, title: string, body: string) => {
+  send = async (host: string, title: string, body: string) => {
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
@@ -18,7 +18,7 @@ export class EmailService {
 
     const mailOptions = {
       from: process.env.USER_EMAIL,
-      to: guests[0],
+      to: host,
       subject: title,
       text: body,
     };

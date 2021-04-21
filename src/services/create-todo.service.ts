@@ -1,8 +1,11 @@
 import {/* inject, */ BindingScope, injectable, service} from '@loopback/core';
 import {repository} from '@loopback/repository';
 import {CalendarEvent, google} from 'calendar-link';
-import {Variables} from 'camunda-external-task-client-js';
-import {CamundaHandlerParams} from '../interfaces/CamundaHandlerParams';
+import {Task, Variables} from 'camunda-external-task-client-js';
+import {
+  CamundaHandlerParams,
+  TaskParams,
+} from '../interfaces/CamundaHandlerParams';
 import {TodoModel} from '../models';
 import {TodoModelRepository} from '../repositories';
 import {EmailService} from './email.service';
@@ -18,29 +21,25 @@ export class CreateTodoService {
 
   saveDatabase = async ({task, taskService}: CamundaHandlerParams) => {
     try {
-      const title = task.variables.get('title');
-      const duration = task.variables.get('duration');
-      const allDay = task.variables.get('allDay');
-      const start = task.variables.get('start');
-      const guests = task.variables.get('guests');
-      if (!title || title === '') {
+      const params = this.getParams(task);
+      if (!params.title || params.title === '') {
         taskService.handleFailure(task, {
           errorMessage: 'Title is required',
         });
         return;
       }
       const todo = new TodoModel({
-        title,
-        description: task.variables.get('description'),
-        duration,
-        allDay,
-        start,
-        guests,
+        title: params.title,
+        description: params.description,
+        duration: JSON.stringify(params.duration),
+        allDay: params.allDay,
+        start: params.start,
+        guests: params.guests,
         isDone: false,
       });
       this.todoModelRepository.create(todo);
       await taskService.complete(task);
-      console.log('TODO saved successfully');
+      console.log('TODO CREATED');
     } catch (e) {
       console.error(`Failed completing my task, ${e}`);
     }
@@ -48,20 +47,16 @@ export class CreateTodoService {
 
   createEvent = async ({task, taskService}: CamundaHandlerParams) => {
     try {
-      const title = task.variables.get('title');
-      const description = task.variables.get('description');
-      const duration = task.variables.get('duration');
-      const allDay = task.variables.get('allDay');
-      const start = task.variables.get('start');
-      let guests = task.variables.get('guests');
-      guests = typeof guests === 'string' ? JSON.parse(guests) : guests;
+      const params = this.getParams(task);
+      const parsedGuests: string[] =
+        typeof params.guests === 'string'
+          ? JSON.parse(params.guests)
+          : params.guests;
+
       const event: CalendarEvent = {
-        title,
-        description,
-        start,
-        duration: allDay ? null : duration,
-        guests,
-        allDay,
+        ...params,
+        duration: params.allDay ? undefined : params.duration,
+        guests: parsedGuests,
       };
 
       // Then fetch the link
@@ -77,16 +72,23 @@ export class CreateTodoService {
   sendEmail = async ({task, taskService}: CamundaHandlerParams) => {
     try {
       const url = task.variables.get('eventUrl');
-      const title = task.variables.get('title');
-      let guests = task.variables.get('guests');
+      let {title, guests} = this.getParams(task);
       guests = typeof guests === 'string' ? JSON.parse(guests) : guests;
 
-      // Then fetch the link
-      await this.emailService.send(guests, title, url);
+      await this.emailService.send(guests[0], title, url);
       console.log('EMAIL SENT');
       await taskService.complete(task);
     } catch (e) {
       console.error(`Failed completing my task, ${e}`);
     }
   };
+
+  private getParams = (task: Task): TaskParams => ({
+    title: task.variables.get('title'),
+    description: task.variables.get('description'),
+    duration: task.variables.get('duration'),
+    allDay: task.variables.get('allDay'),
+    start: task.variables.get('start'),
+    guests: task.variables.get('guests'),
+  });
 }
